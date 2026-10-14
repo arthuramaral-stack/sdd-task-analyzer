@@ -219,3 +219,146 @@ def _validar_tarefas(tarefas: object) -> None:
         _validar_campos(tarefa, ids_vistos)
         _validar_fuso(tarefa)
         _validar_coerencia_datas(tarefa)
+
+
+# --------------------------------------------------------------------------- #
+# Cálculo de métricas (RN01–RN04, RN08, RN09)
+# --------------------------------------------------------------------------- #
+def _tempo_conclusao_min(tarefa: Tarefa) -> float:
+    """Calcula data_conclusao − data_inicio em minutos (RN02).
+
+    Args:
+        tarefa: Tarefa concluída e validada.
+
+    Returns:
+        Duração em minutos.
+    """
+    assert tarefa.data_inicio is not None and tarefa.data_conclusao is not None
+    duracao = tarefa.data_conclusao - tarefa.data_inicio
+    return duracao.total_seconds() / SEGUNDOS_POR_MINUTO
+
+
+def _esta_atrasada(tarefa: Tarefa) -> bool:
+    """Indica se a tarefa foi concluída após o prazo (RN03).
+
+    Args:
+        tarefa: Tarefa concluída e validada.
+
+    Returns:
+        True somente se data_conclusao > prazo (prazo exato não é atraso).
+    """
+    assert tarefa.data_conclusao is not None
+    return tarefa.data_conclusao > tarefa.prazo
+
+
+def _tempo_medio_min(concluidas: list[Tarefa]) -> float:
+    """Média dos tempos de conclusão, arredondada (RN04).
+
+    Args:
+        concluidas: Lista não vazia de tarefas concluídas.
+
+    Returns:
+        Tempo médio em minutos com 2 casas decimais.
+    """
+    soma = sum(_tempo_conclusao_min(tarefa) for tarefa in concluidas)
+    return round(soma / len(concluidas), CASAS_DECIMAIS)
+
+
+def _taxa_atraso_percentual(concluidas: list[Tarefa]) -> float:
+    """Percentual de concluídas após o prazo, arredondado (RN04).
+
+    Args:
+        concluidas: Lista não vazia de tarefas concluídas.
+
+    Returns:
+        Taxa de atraso em percentual com 2 casas decimais.
+    """
+    atrasadas = sum(1 for tarefa in concluidas if _esta_atrasada(tarefa))
+    return round(atrasadas / len(concluidas) * PERCENTUAL_TOTAL, CASAS_DECIMAIS)
+
+
+def _indicador_prioridade(concluidas: list[Tarefa]) -> IndicadorPrioridade:
+    """Monta os indicadores de uma prioridade (RN09 para lista vazia).
+
+    Args:
+        concluidas: Tarefas concluídas de uma única prioridade.
+
+    Returns:
+        Indicador com quantidade, tempo médio e taxa (None se vazia).
+    """
+    if not concluidas:
+        return IndicadorPrioridade(
+            quantidade_concluidas=0,
+            tempo_medio_conclusao_min=None,
+            taxa_atraso_percentual=None,
+        )
+    return IndicadorPrioridade(
+        quantidade_concluidas=len(concluidas),
+        tempo_medio_conclusao_min=_tempo_medio_min(concluidas),
+        taxa_atraso_percentual=_taxa_atraso_percentual(concluidas),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Montagem do relatório
+# --------------------------------------------------------------------------- #
+def _montar_relatorio(
+    tarefas: list[Tarefa], concluidas: list[Tarefa]
+) -> RelatorioMetricas:
+    """Monta o relatório final no formato da seção 1.3.3.
+
+    Args:
+        tarefas: Todas as tarefas recebidas.
+        concluidas: Somente as tarefas concluídas (lista não vazia).
+
+    Returns:
+        Relatório de métricas completo.
+    """
+    indicadores = {
+        prioridade: _indicador_prioridade(
+            [tarefa for tarefa in concluidas if tarefa.prioridade == prioridade]
+        )
+        for prioridade in PRIORIDADES_VALIDAS
+    }
+    return RelatorioMetricas(
+        total_tarefas=len(tarefas),
+        total_concluidas=len(concluidas),
+        tempo_medio_conclusao_min=_tempo_medio_min(concluidas),
+        taxa_atraso_percentual=_taxa_atraso_percentual(concluidas),
+        indicadores_por_prioridade=indicadores,
+    )
+
+
+def analisar_tarefas(tarefas: list[Tarefa]) -> RelatorioMetricas:
+    """Analisa a lista de tarefas e retorna as métricas de produtividade.
+
+    A função é pura (RN11): não altera a lista recebida nem acessa recursos
+    externos.
+
+    Args:
+        tarefas: Lista com pelo menos uma Tarefa.
+
+    Returns:
+        Relatório com totais, tempo médio, taxa de atraso e indicadores
+        por prioridade.
+
+    Raises:
+        EntradaInvalidaError: Lista ou campos fora do contrato.
+        DataInvalidaError: Datas sem fuso ou incoerentes.
+        SemTarefasConcluidasError: Nenhuma tarefa concluída (RN08).
+    """
+    logger.info("Início da análise de tarefas.")
+    try:
+        _validar_tarefas(tarefas)
+    except TaskAnalyzerError as erro:
+        logger.error("Erro de validação: %s", erro)
+        raise
+    concluidas = [tarefa for tarefa in tarefas if tarefa.status == STATUS_CONCLUIDA]
+    if not concluidas:
+        logger.error("Nenhuma tarefa concluída para análise.")
+        raise SemTarefasConcluidasError(
+            "Nenhuma tarefa com status concluida: não é possível calcular médias."
+        )
+    relatorio = _montar_relatorio(tarefas, concluidas)
+    logger.info("Análise concluída: %d tarefas processadas.", len(tarefas))
+    return relatorio
