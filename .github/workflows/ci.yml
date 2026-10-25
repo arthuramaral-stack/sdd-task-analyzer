@@ -1,0 +1,53 @@
+name: CI
+
+# Gatilhos: todo push ou Pull Request nas branches main e develop.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Menor privilégio: o pipeline só lê o código, não escreve no repositório.
+permissions:
+  contents: read
+
+jobs:
+  test-harness:
+    name: Test Harness (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v6
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências (requirements.txt)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Executar Test Harness
+        run: pytest tests/test_harness.py -v
+
+  docker:
+    name: Build e testes no container Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Só gasta recurso com a imagem se a suíte já passou no runner.
+    needs: test-harness
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v6
+
+      - name: Build da imagem (python:3.11-slim)
+        run: docker build -t sdd-task-analyzer:ci .
+
+      - name: Executar Test Harness no container
+        run: docker run --rm sdd-task-analyzer:ci
