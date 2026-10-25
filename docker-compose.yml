@@ -1,0 +1,8 @@
+# Orquestração local: dispara toda a suíte isolada com um único comando.
+#   docker compose run --rm tests
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sdd-task-analyzer:latest
