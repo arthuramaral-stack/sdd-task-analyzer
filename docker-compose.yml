@@ -6,3 +6,5 @@ services:
       context: .
       dockerfile: Dockerfile
     image: sdd-task-analyzer:latest
+    # A imagem é sempre construída localmente, nunca baixada de um registry.
+    pull_policy: build
