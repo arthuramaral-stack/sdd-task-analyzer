@@ -1,0 +1,105 @@
+# Requisitos rastreáveis do TaskAnalyzer (versão legível por máquina da spec).
+# Fonte de verdade: specs/task_analyzer_spec.md (v1.0) e specs/system_design_document.pdf.
+# Cada regra de negócio aponta para o cenário de aceite e o teste que a comprova.
+
+projeto:
+  nome: sdd-task-analyzer
+  modulo: src/task_analyzer.py
+  versao_spec: "1.0"
+  autor: Arthur Amaral dos Santos
+  curso: Análise e Desenvolvimento de Sistemas (CEUB)
+  disciplina: Bootcamp III
+
+contrato:
+  funcao_publica: "analisar_tarefas(tarefas: list[Tarefa]) -> RelatorioMetricas"
+  excecoes:
+    - TaskAnalyzerError
+    - EntradaInvalidaError
+    - DataInvalidaError
+    - SemTarefasConcluidasError
+
+ambiente:
+  python: "3.11"
+  dependencias_autorizadas:
+    - pacote: pytest
+      versao: "9.1.1"
+      escopo: tests/
+  imagem_docker: python:3.11-slim
+  comando_testes: pytest tests/test_harness.py -v
+
+regras_de_negocio:
+  - id: RN01
+    descricao: Só tarefas concluídas entram no tempo médio e na taxa de atraso.
+    cenarios: [CA01, CA03]
+  - id: RN02
+    descricao: Tempo de conclusão = data_conclusao - data_inicio, em minutos.
+    cenarios: [CA01, CA04]
+  - id: RN03
+    descricao: Atraso quando data_conclusao > prazo; concluir no prazo exato não é atraso.
+    cenarios: [CA01, CA04]
+  - id: RN04
+    descricao: Tempo e percentual arredondados com round(valor, 2).
+    cenarios: [CA04]
+  - id: RN05
+    descricao: Datas timezone-aware em UTC; datas sem fuso são rejeitadas.
+    cenarios: [CA06]
+  - id: RN06
+    descricao: Validação fail-fast, sem resultado parcial.
+    cenarios: [CA02, CA05, CA06]
+  - id: RN07
+    descricao: data_criacao <= data_inicio <= data_conclusao e data_criacao <= prazo.
+    cenarios: [CA02, CA06]
+  - id: RN08
+    descricao: Sem tarefas concluídas lança SemTarefasConcluidasError (sem divisão por zero).
+    cenarios: [CA03]
+  - id: RN09
+    descricao: Prioridade sem concluídas retorna quantidade 0 e médias/taxas None.
+    cenarios: [CA04]
+  - id: RN10
+    descricao: id_tarefa único na lista.
+    cenarios: [CA05]
+  - id: RN11
+    descricao: Função pura, sem alterar a entrada nem acessar rede, arquivos ou banco.
+    cenarios: [CA07]
+  - id: RN12
+    descricao: Eventos registrados com logging, nunca print.
+    cenarios: []
+    verificacao: revisão humana no Pull Request (sem teste automatizado)
+
+cenarios_de_aceite:
+  - id: CA01
+    tipo: sucesso
+    teste: test_ca01_metricas_corretas_com_massa_padrao
+  - id: CA02
+    tipo: excecao
+    teste: test_ca02_conclusao_antes_do_inicio_lanca_data_invalida
+  - id: CA03
+    tipo: excecao
+    teste:
+      - test_ca03_sem_tarefas_concluidas_lanca_excecao_especifica
+      - test_ca03_nunca_lanca_zero_division_error
+  - id: CA04
+    tipo: borda
+    teste: test_ca04_arredondamento_prazo_exato_e_prioridade_vazia
+  - id: CA05
+    tipo: excecao
+    teste: test_ca05_entradas_invalidas_lancam_entrada_invalida
+    casos: 6
+  - id: CA06
+    tipo: excecao
+    teste: test_ca06_datas_incoerentes_lancam_data_invalida
+    casos: 4
+  - id: CA07
+    tipo: funcao_pura
+    teste: test_ca07_lista_de_entrada_nao_e_modificada
+
+requisitos_nao_funcionais:
+  - id: RNF01
+    descricao: Todo push ou Pull Request em main e develop executa o Test Harness no GitHub Actions.
+    artefato: .github/workflows/ci.yml
+  - id: RNF02
+    descricao: A suíte roda isolada em container python:3.11-slim com um único comando.
+    artefato: [Dockerfile, docker-compose.yml]
+  - id: RNF03
+    descricao: A main só recebe código com o pipeline verde e homologação humana via Pull Request.
+    artefato: CONTEXT_RULES.md (seção 3.5)
